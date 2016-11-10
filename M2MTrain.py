@@ -23,20 +23,18 @@ def vali_loss_acc(vali,get_out,N_cell):
     R=T.matrix('R')
     for i in range(len(vali)):
         #hidden states
-        init_present=np.zeros((1,N_cell)).astype('float32')
-        init_future=np.zeros((1,N_cell)).astype('float32')
         for l in vali[i]:
             #(l[0].shape,l[1].shape)
-            out,init_present,init_future=get_out(l[0],l[1],init_present,init_future)
+            out=get_out(l[0])
             predicts.append(out)
-            targets.append(l[2])
+            targets.append(l[1])
     
     loss= T.mean(lasagne.objectives.categorical_crossentropy(P, R))       
     acc = T.mean(lasagne.objectives.categorical_accuracy(P, R))
     performance=theano.function([P,R],[loss,acc])
     return performance(np.vstack(predicts),np.vstack(targets))
 
-def trainwithPER(setID,typ='teacher',learning_rate=1e-4, drop_out=0.4,Layers=[2,1,2], N_hidden=2048, N_cell=2048, steps=20,ahead=20, L2_lambda=1e-4,patience=3, continue_train=0, evalPER=0):
+def trainwithPER(setID,typ='teacher',learning_rate=1e-4, drop_out=0.4,Layers=[2,1,2], N_hidden=2048, N_cell=2048, steps=20, L2_lambda=1e-4,patience=3, continue_train=0, evalPER=0):
     N_EPOCHS = 100
     np.random.seed(55)
     typ2=typ
@@ -58,11 +56,11 @@ def trainwithPER(setID,typ='teacher',learning_rate=1e-4, drop_out=0.4,Layers=[2,
     train_data={'feature':path+"/%s/LSTMFile%s/%s_train_lstm.npy" %(typ,setID,typ[:3]),
                 'label':path+"/%s/LSTMFile%s/%s_train_target_lstm.npy" %(typ2,setID,typ2[:3])}
     #where to store weights
-    fname='%s/%s/LSTMWeight%s/FULL_%s_N%s_D%s_L%s_C%s_%s_S%s_A%s' %(path,typ,setID,typ[:3],N_hidden,drop_out,L2_lambda,N_cell,Layers,steps,ahead)
+    fname='%s/%s/LSTMWeight%s/FULL_%s_N%s_D%s_L%s_C%s_%s_S%s' %(path,typ,setID,typ[:3],N_hidden,drop_out,L2_lambda,N_cell,Layers,steps)
     print(fname)
 
     #instances
-    asr=ASR(path, dic, lm, hlist, julius, hresults, priors_path,testmfclist, testdnnlist, setID, prob_path, results_mlf, label_mlf, opt, model,steps=steps,ahead=ahead,N_cell=N_cell)
+    asr=ASR(path, dic, lm, hlist, julius, hresults, priors_path,testmfclist, testdnnlist, setID, prob_path, results_mlf, label_mlf, opt, model,steps=steps,N_cell=N_cell)
     #data maker
     asr.total_sentences(train_data)
     
@@ -91,15 +89,12 @@ def trainwithPER(setID,typ='teacher',learning_rate=1e-4, drop_out=0.4,Layers=[2,
     for epoch in range(N_EPOCHS):
         for i in range(n_sentences):
             #hidden states
-            init_present=np.zeros((1,N_cell)).astype('float32')
-            init_future=np.zeros((1,N_cell)).astype('float32')
             for l in asr.train_data[i]:
-                init_present,init_future=ff.train(l[0],l[1],l[2],init_present,init_future)
+                ff.train(l[0],l[1])
             processing(i,n_sentences,epoch,acc,loss,accvali,lossvali)
         asr.shufflelists()
         #current preformences
         loss, acc = vali_loss_acc(asr.vali_data,ff.get_out,N_cell)
-        print('PER',asr.RecogWithStateProbs(ff.get_out,2,2))
         #whether to change learning rate
         if loss<=lossvali:
             #save weights
@@ -118,7 +113,8 @@ def trainwithPER(setID,typ='teacher',learning_rate=1e-4, drop_out=0.4,Layers=[2,
                 f.write('\nEpoch: %s | Best acc:%s loss: %s | PER:%s\n' %(epoch, round(float(accvali),4), round(float(lossvali),4), asr.RecogWithStateProbs(ff.get_out,2,2)))
                 f.write('fine-tuning with lr %s\n' %(5e-6))
                 f.close()
-                break
+                return 0
             p+=1
-trainwithPER('0',typ='student',learning_rate=9e-5,drop_out=0,Layers=[2,1,2], N_hidden=2048, N_cell=2048, steps=2000,ahead=0, L2_lambda=1e-3,patience=3, continue_train=0,evalPER=0)
-trainwithPER('0',typ='student',learning_rate=5e-6,drop_out=0,Layers=[2,1,2], N_hidden=2048, N_cell=2048, steps=2000,ahead=0, L2_lambda=1e-3,patience=3, continue_train=1,evalPER=0)
+for i in [2,3,4,5,6]:
+    trainwithPER(str(i),typ='student',learning_rate=9e-5,drop_out=0.3,Layers=[2,2,2], N_hidden=2048, N_cell=1024, steps=2000, L2_lambda=1e-3,patience=3, continue_train=0,evalPER=0)
+    trainwithPER(str(i),typ='student',learning_rate=5e-6,drop_out=0.3,Layers=[2,2,2], N_hidden=2048, N_cell=1024, steps=2000, L2_lambda=1e-3,patience=3, continue_train=1,evalPER=0)

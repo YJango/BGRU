@@ -28,7 +28,7 @@ class ASR(object):
     path, dic, lm, hlist, julius, hresults, priors_path,
     testmfclist, testdnnlist, setID, prob_path, 
     results_mlf, label_mlf, opt, model,
-    steps=20, ahead=20,N_cell=512):
+    steps=20,N_cell=512):
         self.path=path
         self.dic=dic
         self.lm=lm
@@ -45,7 +45,6 @@ class ASR(object):
         self.opt=opt
         self.model=model
         self.steps=steps
-        self.ahead=ahead
         self.N_cell=N_cell
     ##htk file reader/writer
     #htk writer
@@ -99,12 +98,10 @@ class ASR(object):
             data=self.read_htk(name[:-1])[0]
             #make data
             
-            lists=self.per_sentence(data,seq_Y='0',steps=1000)
+            lists=self.per_sentence(data,seq_Y='0',steps=2000)
             probs=[]
-            init_present=np.zeros((1,self.N_cell)).astype('float32')
-            init_future=np.zeros((1,self.N_cell)).astype('float32')
             for l in lists:
-                out,init_present,init_future=get_out(l[0],l[1],init_present,init_future)
+                out=get_out(l[0])
                 probs.append(out)
             #turn into likelihoods
             log_liks=np.log10(np.vstack(probs)/priors)
@@ -154,21 +151,18 @@ class ASR(object):
         """
         D_input=seq_X.shape[1]
         D_output=120
-        seq_X2=np.vstack((seq_X,np.zeros((self.ahead,D_input))))
         sen_len=len(seq_X)
         lists=[]
         #index
         idx_present=0
-        idx_future=self.ahead
         #first part
         #remaining parts
         while idx_present < sen_len:
             if type(seq_Y)!=type('0'):
-                lists.append([seq_X[idx_present:idx_present+steps].reshape((1,-1,D_input)).astype("float32"),seq_X2[idx_future:idx_future+len(seq_X[idx_present:idx_present+steps])].reshape((1,-1,D_input)).astype("float32"),np_utils.to_categorical(seq_Y[idx_present:idx_present+steps],D_output).astype("int16")])
+                lists.append([seq_X[idx_present:idx_present+steps].reshape((1,-1,D_input)).astype("float32"),np_utils.to_categorical(seq_Y[idx_present:idx_present+steps],D_output).astype("int16")])
             else:
-                lists.append([seq_X[idx_present:idx_present+steps].reshape((1,-1,D_input)).astype("float32"),seq_X2[idx_future:idx_future+len(seq_X[idx_present:idx_present+steps])].reshape((1,-1,D_input)).astype("float32")])
+                lists.append([seq_X[idx_present:idx_present+steps].reshape((1,-1,D_input)).astype("float32")])
             idx_present+=steps
-            idx_future+=steps
         return lists
     
     def total_sentences(self,fname,vali_size=10):
